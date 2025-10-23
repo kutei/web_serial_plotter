@@ -48,11 +48,11 @@ const PIDGraphPlotter = ({ onBack }) => {
   });
   const [settings, setSettings] = useState({
     maxDataPoints: 1000,
-    updateInterval: 100,
+    updateInterval: 100,  // C++のlコマンドに渡すms間隔
     yAxisMin: -100,
     yAxisMax: 100,
     autoScale: true,
-    command: 'l'  // デフォルトコマンド（PIDデータ）
+    command: 'l'  // lコマンド（引数は updateInterval で指定）
   });
   const [showSettings, setShowSettings] = useState(false);
   const [statistics, setStatistics] = useState({
@@ -66,6 +66,7 @@ const PIDGraphPlotter = ({ onBack }) => {
   const startTimeRef = useRef(null);
 
   // Parse incoming data for PID values (expects CSV: input,target,output)
+  // C++ output format: %d,%d,%.4f (int input, int target, float output)
   const parseData = (rawData) => {
     const lines = rawData.split('\n');
     const pidDataArray = [];
@@ -74,12 +75,12 @@ const PIDGraphPlotter = ({ onBack }) => {
       const trimmed = line.trim();
       if (trimmed) {
         console.debug(`Raw data: "${trimmed}"`);
-        // Parse CSV format: input,target,output
+        // Parse CSV format: input,target,output (int,int,float from C++)
         const parts = trimmed.split(',');
         if (parts.length >= 3) {
-          const pidInput = parseFloat(parts[0]);
-          const pidTarget = parseFloat(parts[1]);
-          const pidOutput = parseFloat(parts[2]);
+          const pidInput = parseFloat(parts[0]);   // int from C++ (g_pid_boom.get_in())
+          const pidTarget = parseFloat(parts[1]);  // int from C++ (g_pid_boom.get_target())
+          const pidOutput = parseFloat(parts[2]);  // float from C++ (g_motor_output[0])
 
           if (!isNaN(pidInput) && !isNaN(pidTarget) && !isNaN(pidOutput)) {
             const pidData = {
@@ -174,24 +175,10 @@ const PIDGraphPlotter = ({ onBack }) => {
     return () => removeDataCallback(handleData);
   }, [addDataCallback, removeDataCallback, isRecording, settings.maxDataPoints]);
 
-  // Cleanup on component unmount
-  useEffect(() => {
-    return () => {
-      if (window.pidPlotterInterval) {
-        clearInterval(window.pidPlotterInterval);
-        window.pidPlotterInterval = null;
-      }
-    };
-  }, []);
-
   // Handle disconnection automatically
   useEffect(() => {
     if (!isConnected && isRecording) {
       setIsRecording(false);
-      if (window.pidPlotterInterval) {
-        clearInterval(window.pidPlotterInterval);
-        window.pidPlotterInterval = null;
-      }
     }
   }, [isConnected, isRecording]);
 
@@ -224,23 +211,19 @@ const PIDGraphPlotter = ({ onBack }) => {
       setPlotData({ timestamps: [], pidInput: [], pidTarget: [], pidOutput: [] });
       setDataBuffer('');
 
-      // Start sending commands periodically
-      console.debug(`Starting periodic command transmission: ${settings.command} every ${settings.updateInterval}ms`);
-      const intervalId = setInterval(() => {
-        sendCommand(settings.command);
-      }, settings.updateInterval);
-
-      // Store interval ID for cleanup
-      window.pidPlotterInterval = intervalId;
+      // Send l command once with interval parameter - C++ will handle continuous transmission
+      const commandWithInterval = `${settings.command} ${settings.updateInterval}`;
+      console.debug(`Sending l command: ${commandWithInterval}`);
+      await sendCommand(commandWithInterval);
+      console.log('Recording started - C++ is now sending data continuously');
     } else {
-      // Stop recording
+      // Stop recording by sending Ctrl+C to interrupt the l command
       console.log('Stopping recording...');
       setIsRecording(false);
-      if (window.pidPlotterInterval) {
-        clearInterval(window.pidPlotterInterval);
-        window.pidPlotterInterval = null;
-        console.debug('Stopped periodic command transmission');
-      }
+
+      // Send Ctrl+C (ASCII 3) to stop the l command
+      console.debug('Sending Ctrl+C to stop l command');
+      await sendData('\x03', '');  // Ctrl+C without line ending
 
       // Disable tool mode
       console.debug('Sending: disable tool_mode');
@@ -351,7 +334,7 @@ const PIDGraphPlotter = ({ onBack }) => {
       y: {
         title: {
           display: true,
-          text: '値'
+          text: 'PID値 (Input/Target)'
         },
         min: settings.autoScale ? undefined : settings.yAxisMin,
         max: settings.autoScale ? undefined : settings.yAxisMax
@@ -389,7 +372,7 @@ const PIDGraphPlotter = ({ onBack }) => {
       y: {
         title: {
           display: true,
-          text: 'Output値'
+          text: 'モーター出力値 (-1.0 to 1.0)'
         },
         min: settings.autoScale ? undefined : settings.yAxisMin,
         max: settings.autoScale ? undefined : settings.yAxisMax
@@ -451,7 +434,7 @@ const PIDGraphPlotter = ({ onBack }) => {
               />
             </div>
             <div className="setting-group">
-              <label>更新間隔 (ms):</label>
+              <label>データ送信間隔 (ms):</label>
               <input
                 type="number"
                 value={settings.updateInterval}
@@ -459,6 +442,7 @@ const PIDGraphPlotter = ({ onBack }) => {
                 min="10"
                 max="1000"
                 disabled={isRecording}
+                title="C++のlコマンドがデータを送信する間隔"
               />
             </div>
             <div className="setting-group">
