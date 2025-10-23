@@ -48,7 +48,7 @@ const PIDGraphPlotter = ({ onBack }) => {
   });
   const [settings, setSettings] = useState({
     maxDataPoints: 1000,
-    updateInterval: 100,  // C++のlコマンドに渡すms間隔
+    updateInterval: 20,  // C++のlコマンドに渡すms間隔
     yAxisMin: -100,
     yAxisMax: 100,
     autoScale: true,
