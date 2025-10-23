@@ -280,8 +280,8 @@ const PIDGraphPlotter = ({ onBack }) => {
     URL.revokeObjectURL(url);
   };
 
-  // Chart configuration
-  const chartData = {
+  // Chart configuration for Input/Target
+  const inputTargetChartData = {
     labels: plotData.timestamps,
     datasets: [
       {
@@ -301,7 +301,14 @@ const PIDGraphPlotter = ({ onBack }) => {
         borderWidth: 2,
         pointRadius: 0,
         tension: 0.1
-      },
+      }
+    ]
+  };
+
+  // Chart configuration for Output
+  const outputChartData = {
+    labels: plotData.timestamps,
+    datasets: [
       {
         label: 'PID Output',
         data: plotData.pidOutput,
@@ -314,7 +321,8 @@ const PIDGraphPlotter = ({ onBack }) => {
     ]
   };
 
-  const chartOptions = {
+  // Chart options for Input/Target
+  const inputTargetChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
@@ -328,7 +336,7 @@ const PIDGraphPlotter = ({ onBack }) => {
       },
       title: {
         display: true,
-        text: 'PID制御結果リアルタイムプロッター'
+        text: 'PID Input & Target'
       }
     },
     scales: {
@@ -344,6 +352,44 @@ const PIDGraphPlotter = ({ onBack }) => {
         title: {
           display: true,
           text: '値'
+        },
+        min: settings.autoScale ? undefined : settings.yAxisMin,
+        max: settings.autoScale ? undefined : settings.yAxisMax
+      }
+    }
+  };
+
+  // Chart options for Output
+  const outputChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    interaction: {
+      intersect: false,
+      mode: 'index'
+    },
+    plugins: {
+      legend: {
+        position: 'top'
+      },
+      title: {
+        display: true,
+        text: 'PID Output'
+      }
+    },
+    scales: {
+      x: {
+        type: 'linear',
+        position: 'bottom',
+        title: {
+          display: true,
+          text: '時間 (秒)'
+        }
+      },
+      y: {
+        title: {
+          display: true,
+          text: 'Output値'
         },
         min: settings.autoScale ? undefined : settings.yAxisMin,
         max: settings.autoScale ? undefined : settings.yAxisMax
@@ -524,9 +570,16 @@ const PIDGraphPlotter = ({ onBack }) => {
         </div>
       </div>
 
-      <div className="chart-container">
+      <div className="charts-container">
         {plotData.timestamps.length > 0 ? (
-          <Line ref={chartRef} data={chartData} options={chartOptions} />
+          <>
+            <div className="chart-section">
+              <Line data={inputTargetChartData} options={inputTargetChartOptions} />
+            </div>
+            <div className="chart-section">
+              <Line ref={chartRef} data={outputChartData} options={outputChartOptions} />
+            </div>
+          </>
         ) : (
           <div className="empty-chart">
             <p>グラフデータがここに表示されます</p>

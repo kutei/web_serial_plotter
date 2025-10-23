@@ -165,3 +165,21 @@
   align-items: center;
   gap: 4px;
 }
+
+/* Charts Container Styles */
+.charts-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+}
+
+.chart-section {
+  flex: 1;
+  min-height: 300px;
+  padding: 15px;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
