@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, BarChart3, Wifi, WifiOff, Settings, Plug, PlugZap } from 'lucide-react';
+import { Terminal, BarChart3, Wifi, WifiOff, Settings } from 'lucide-react';
 import { WebSerialSupport } from '../utils/webSerialSupport';
 import { useSerialContext } from '../contexts/SerialContext';
 
@@ -17,7 +17,7 @@ const MenuScreen = ({ onSelectFeature }) => {
 
   const [showSettings, setShowSettings] = useState(false);
   const [connectionSettings, setConnectionSettings] = useState({
-    baudRate: 115200,
+    baudRate: 921600,
     dataBits: 8,
     stopBits: 1,
     parity: 'none',
@@ -104,9 +104,55 @@ const MenuScreen = ({ onSelectFeature }) => {
         </div>
       )}
 
+      {isWebSerialSupported && (
+        <div className="connection-panel">
+          <div className="connection-status">
+            <div className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
+              {isConnected ? <Wifi size={20} /> : <WifiOff size={20} />}
+              <span>{isConnected ? '接続中' : '未接続'}</span>
+              {status?.port && (
+                <span className="port-info">
+                  (VID: {status.port.usbVendorId?.toString(16)}, PID: {status.port.usbProductId?.toString(16)})
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="connection-controls">
+            {!isConnected ? (
+              <button
+                onClick={handleConnect}
+                className="connect-button primary"
+                disabled={status === 'connecting'}
+              >
+                <Wifi size={16} />
+                {status === 'connecting' ? '接続中...' : '接続'}
+              </button>
+            ) : (
+              <button
+                onClick={handleDisconnect}
+                className="connect-button disconnect"
+              >
+                <WifiOff size={16} />
+                切断
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="error-banner">
+          <span>エラー: {error}</span>
+        </div>
+      )}
+
       {isWebSerialSupported && showSettings && (
         <div className="menu-settings-panel">
           <h3>シリアル通信設定</h3>
+          <p className="settings-description">
+            ここで設定した通信パラメータが全ての機能で使用されます。
+          </p>
           <div className="settings-grid">
             <div className="setting-group">
               <label>ボーレート:</label>
@@ -121,6 +167,7 @@ const MenuScreen = ({ onSelectFeature }) => {
                 <option value={57600}>57600</option>
                 <option value={115200}>115200</option>
                 <option value={230400}>230400</option>
+                <option value={921600}>921600</option>
               </select>
             </div>
             <div className="setting-group">
@@ -169,31 +216,6 @@ const MenuScreen = ({ onSelectFeature }) => {
               </select>
             </div>
           </div>
-
-          <div className="connection-panel">
-            <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
-              {isConnected ? <PlugZap size={20} /> : <Plug size={20} />}
-              <span>{isConnected ? '接続中' : '未接続'}</span>
-              {status?.port && (
-                <span className="port-info">
-                  (VID: {status.port.usbVendorId?.toString(16)}, PID: {status.port.usbProductId?.toString(16)})
-                </span>
-              )}
-            </div>
-            <button
-              onClick={isConnected ? handleDisconnect : handleConnect}
-              className={`connect-button ${isConnected ? 'disconnect' : 'connect'}`}
-              disabled={!isWebSerialSupported}
-            >
-              {isConnected ? '切断' : 'ポート選択・接続'}
-            </button>
-          </div>
-
-          {error && (
-            <div className="error-banner">
-              <span>エラー: {error}</span>
-            </div>
-          )}
         </div>
       )}
 

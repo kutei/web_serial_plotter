@@ -31,3 +31,137 @@
     transform: rotate(360deg);
   }
 }
+
+/* Settings Description */
+.settings-description {
+  margin: 10px 0;
+  padding: 10px;
+  background-color: #f0f9ff;
+  border-left: 4px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #1e40af;
+}
+
+/* Statistics Panel Styles */
+.statistics-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.stat-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+}
+
+.stat-group-title {
+  font-weight: bold;
+  color: #374151;
+  margin-bottom: 5px;
+  font-size: 0.9em;
+}
+
+.stat-values {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-values .stat-value {
+  font-size: 0.85em;
+  color: #6b7280;
+}
+
+/* Connection Panel Styles */
+.connection-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background-color: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  margin: 20px 0;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.status-indicator.connected {
+  color: #059669;
+}
+
+.status-indicator.disconnected {
+  color: #dc2626;
+}
+
+.port-info {
+  font-size: 0.85em;
+  color: #6b7280;
+  margin-left: 8px;
+}
+
+.connection-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.connect-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.connect-button.primary {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.connect-button.primary:hover {
+  background-color: #2563eb;
+}
+
+.connect-button.primary:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.connect-button.disconnect {
+  background-color: #ef4444;
+  color: white;
+}
+
+.connect-button.disconnect:hover {
+  background-color: #dc2626;
+}
+
+/* Tool Mode Indicator */
+.tool-mode-indicator {
+  font-size: 0.9em;
+  color: #059669;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

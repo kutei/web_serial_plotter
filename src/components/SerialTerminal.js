@@ -20,7 +20,6 @@ const SerialTerminal = ({ onBack }) => {
   const [commandHistory, setCommandHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [settings, setSettings] = useState({
-    baudRate: 115200,
     lineEnding: '\n',
     echo: true
   });
@@ -50,15 +49,6 @@ const SerialTerminal = ({ onBack }) => {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [terminalOutput]);
-
-  // Handle disconnection (connection is handled in menu)
-  const handleDisconnect = async () => {
-    try {
-      await disconnect();
-    } catch (err) {
-      console.error('Disconnection failed:', err);
-    }
-  };
 
   // Handle sending command
   const handleSendCommand = async () => {
@@ -178,22 +168,7 @@ const SerialTerminal = ({ onBack }) => {
 
       {showSettings && (
         <div className="settings-panel">
-          <h3>設定</h3>
-          <div className="setting-group">
-            <label>ボーレート:</label>
-            <select
-              value={settings.baudRate}
-              onChange={(e) => setSettings(prev => ({...prev, baudRate: parseInt(e.target.value)}))}
-              disabled={isConnected}
-            >
-              <option value={9600}>9600</option>
-              <option value={19200}>19200</option>
-              <option value={38400}>38400</option>
-              <option value={57600}>57600</option>
-              <option value={115200}>115200</option>
-              <option value={230400}>230400</option>
-            </select>
-          </div>
+          <h3>ターミナル設定</h3>
           <div className="setting-group">
             <label>改行コード:</label>
             <select
@@ -222,22 +197,16 @@ const SerialTerminal = ({ onBack }) => {
         <div className="connection-panel">
         <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
           {isConnected ? <Wifi size={20} /> : <WifiOff size={20} />}
-          <span>{isConnected ? '接続中' : 'メニュー画面で接続してください'}</span>
+          <span>{isConnected ? '接続中' : 'メニュー画面で接続・通信設定してください'}</span>
           {status?.port && (
             <span className="port-info">
               (VID: {status.port.usbVendorId?.toString(16)}, PID: {status.port.usbProductId?.toString(16)})
             </span>
           )}
         </div>
-        {isConnected && (
-          <button
-            onClick={handleDisconnect}
-            className="connect-button disconnect"
-          >
-            切断
-          </button>
-        )}
-      </div>      {error && (
+      </div>
+
+      {error && (
         <div className="error-banner">
           <span>エラー: {error}</span>
         </div>
