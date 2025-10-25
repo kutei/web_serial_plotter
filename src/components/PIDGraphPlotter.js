@@ -42,10 +42,9 @@ const PIDGraphPlotter = ({ onBack }) => {
   const [dataBuffer, setDataBuffer] = useState('');
   const [plotData, setPlotData] = useState({
     timestamps: [],
-    pidInput: [],
-    pidTarget: [],
-    pidOutput: []
+    datasets: []  // 動的なデータセット配列
   });
+  const [chartConfig, setChartConfig] = useState(null); // グラフ設定: {charts: [{title: string, datasets: [{label: string, dataIndex: number}]}]}
   const [settings, setSettings] = useState({
     maxDataPoints: 1000,
     updateInterval: 20,  // C++のlコマンドに渡すms間隔
@@ -55,50 +54,91 @@ const PIDGraphPlotter = ({ onBack }) => {
     command: 'l'  // lコマンド（引数は updateInterval で指定）
   });
   const [showSettings, setShowSettings] = useState(false);
-  const [statistics, setStatistics] = useState({
-    pidInput: { min: 0, max: 0, avg: 0 },
-    pidTarget: { min: 0, max: 0, avg: 0 },
-    pidOutput: { min: 0, max: 0, avg: 0 },
-    count: 0
-  });
+  const [statistics, setStatistics] = useState([]);  // 動的な統計情報配列
 
   const chartRef = useRef(null);
   const startTimeRef = useRef(null);
+  const configReceivedRef = useRef(false);
+
+  // Parse config line (e.g., "conf=0:PID Input,0:PID Target,1:PID Output")
+  const parseConfigLine = (configLine) => {
+    if (!configLine.startsWith('conf=')) return null;
+
+    const configStr = configLine.substring(5); // Remove "conf="
+    const parts = configStr.split(',');
+
+    const charts = [];
+    const datasetConfigs = [];
+
+    parts.forEach((part, index) => {
+      const trimmed = part.trim();
+      const colonIndex = trimmed.indexOf(':');
+      if (colonIndex === -1) return;
+
+      const chartIndex = parseInt(trimmed.substring(0, colonIndex));
+      const label = trimmed.substring(colonIndex + 1).trim();
+
+      if (isNaN(chartIndex)) return;
+
+      datasetConfigs.push({
+        chartIndex,
+        label,
+        dataIndex: index
+      });
+
+      // Ensure charts array has enough elements
+      while (charts.length <= chartIndex) {
+        charts.push({ datasets: [] });
+      }
+
+      charts[chartIndex].datasets.push({
+        label,
+        dataIndex: index
+      });
+    });
+
+    console.log('Parsed chart config:', { charts, datasetConfigs });
+    return { charts, datasetCount: parts.length };
+  };
 
   // Parse incoming data for PID values (expects CSV: input,target,output)
   // C++ output format: %d,%d,%.4f (int input, int target, float output)
   const parseData = (rawData) => {
     const lines = rawData.split('\n');
-    const pidDataArray = [];
+    const dataArray = [];
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed) {
         console.debug(`Raw data: "${trimmed}"`);
-        // Parse CSV format: input,target,output (int,int,float from C++)
-        const parts = trimmed.split(',');
-        if (parts.length >= 3) {
-          const pidInput = parseFloat(parts[0]);   // int from C++ (g_pid_boom.get_in())
-          const pidTarget = parseFloat(parts[1]);  // int from C++ (g_pid_boom.get_target())
-          const pidOutput = parseFloat(parts[2]);  // float from C++ (g_motor_output[0])
 
-          if (!isNaN(pidInput) && !isNaN(pidTarget) && !isNaN(pidOutput)) {
-            const pidData = {
-              input: pidInput,
-              target: pidTarget,
-              output: pidOutput
-            };
-            pidDataArray.push(pidData);
-          } else {
-            console.warn(`Invalid numeric data in "${trimmed}": input=${pidInput}, target=${pidTarget}, output=${pidOutput}`);
+        // Check if this is a config line
+        if (trimmed.startsWith('conf=')) {
+          const config = parseConfigLine(trimmed);
+          if (config && !configReceivedRef.current) {
+            setChartConfig(config);
+            configReceivedRef.current = true;
+            console.log('Chart configuration received:', config);
           }
-        } else {
-          console.warn(`Insufficient data parts in "${trimmed}" (${parts.length}), expected at least 3`);
+          continue;
+        }
+
+        // Parse CSV data
+        const parts = trimmed.split(',');
+        if (parts.length >= 1) {
+          const values = parts.map(p => parseFloat(p));
+
+          // Check if all values are valid numbers
+          if (values.every(v => !isNaN(v))) {
+            dataArray.push(values);
+          } else {
+            console.warn(`Invalid numeric data in "${trimmed}"`);
+          }
         }
       }
     }
 
-    return pidDataArray;
+    return dataArray;
   };
 
   // Handle incoming serial data
@@ -108,9 +148,9 @@ const PIDGraphPlotter = ({ onBack }) => {
 
       setDataBuffer(prev => {
         const newBuffer = prev + data;
-        const pidDataArray = parseData(newBuffer);
+        const dataArray = parseData(newBuffer);
 
-        if (pidDataArray.length > 0) {
+        if (dataArray.length > 0) {
           const now = Date.now();
           if (!startTimeRef.current) {
             startTimeRef.current = now;
@@ -118,48 +158,55 @@ const PIDGraphPlotter = ({ onBack }) => {
 
           setPlotData(prevPlotData => {
             const newTimestamps = [...prevPlotData.timestamps];
-            const newPidInput = [...prevPlotData.pidInput];
-            const newPidTarget = [...prevPlotData.pidTarget];
-            const newPidOutput = [...prevPlotData.pidOutput];
+            const newDatasets = prevPlotData.datasets.map(ds => [...ds]);
 
-            pidDataArray.forEach(pidData => {
+            dataArray.forEach(values => {
               const relativeTime = (now - startTimeRef.current) / 1000; // seconds
               newTimestamps.push(relativeTime);
-              newPidInput.push(pidData.input);
-              newPidTarget.push(pidData.target);
-              newPidOutput.push(pidData.output);
+
+              // Initialize datasets if needed
+              while (newDatasets.length < values.length) {
+                newDatasets.push([]);
+              }
+
+              // Add values to corresponding datasets
+              values.forEach((value, index) => {
+                if (index < newDatasets.length) {
+                  newDatasets[index].push(value);
+                }
+              });
             });
 
             // Limit data points
             if (newTimestamps.length > settings.maxDataPoints) {
               const excess = newTimestamps.length - settings.maxDataPoints;
               newTimestamps.splice(0, excess);
-              newPidInput.splice(0, excess);
-              newPidTarget.splice(0, excess);
-              newPidOutput.splice(0, excess);
+              newDatasets.forEach(ds => ds.splice(0, excess));
             }
 
             // Update statistics
-            if (newPidInput.length > 0) {
-              const calculateStats = (values) => ({
-                min: Math.min(...values).toFixed(2),
-                max: Math.max(...values).toFixed(2),
-                avg: (values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(2)
-              });
+            if (newTimestamps.length > 0 && newDatasets.length > 0) {
+              const calculateStats = (values) => {
+                if (values.length === 0) return { min: 0, max: 0, avg: 0 };
+                return {
+                  min: Math.min(...values).toFixed(2),
+                  max: Math.max(...values).toFixed(2),
+                  avg: (values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(2)
+                };
+              };
 
-              setStatistics({
-                pidInput: calculateStats(newPidInput),
-                pidTarget: calculateStats(newPidTarget),
-                pidOutput: calculateStats(newPidOutput),
-                count: newTimestamps.length
-              });
+              const newStats = newDatasets.map((ds, index) => ({
+                index,
+                label: chartConfig?.charts?.flatMap(c => c.datasets).find(d => d.dataIndex === index)?.label || `Data ${index}`,
+                ...calculateStats(ds)
+              }));
+
+              setStatistics(newStats);
             }
 
             return {
               timestamps: newTimestamps,
-              pidInput: newPidInput,
-              pidTarget: newPidTarget,
-              pidOutput: newPidOutput
+              datasets: newDatasets
             };
           });
 
@@ -173,7 +220,7 @@ const PIDGraphPlotter = ({ onBack }) => {
 
     addDataCallback(handleData);
     return () => removeDataCallback(handleData);
-  }, [addDataCallback, removeDataCallback, isRecording, settings.maxDataPoints]);
+  }, [addDataCallback, removeDataCallback, isRecording, settings.maxDataPoints, chartConfig]);
 
   // Handle disconnection automatically
   useEffect(() => {
@@ -208,8 +255,11 @@ const PIDGraphPlotter = ({ onBack }) => {
       // Start recording
       setIsRecording(true);
       startTimeRef.current = Date.now();
-      setPlotData({ timestamps: [], pidInput: [], pidTarget: [], pidOutput: [] });
+      configReceivedRef.current = false;
+      setChartConfig(null);
+      setPlotData({ timestamps: [], datasets: [] });
       setDataBuffer('');
+      setStatistics([]);
 
       // Send l command once with interval parameter - C++ will handle continuous transmission
       const commandWithInterval = `${settings.command} ${settings.updateInterval}`;
@@ -234,24 +284,40 @@ const PIDGraphPlotter = ({ onBack }) => {
 
   // Clear data
   const clearData = () => {
-    setPlotData({ timestamps: [], pidInput: [], pidTarget: [], pidOutput: [] });
+    setPlotData({ timestamps: [], datasets: [] });
     setDataBuffer('');
-    setStatistics({
-      pidInput: { min: 0, max: 0, avg: 0 },
-      pidTarget: { min: 0, max: 0, avg: 0 },
-      pidOutput: { min: 0, max: 0, avg: 0 },
-      count: 0
-    });
+    setStatistics([]);
     startTimeRef.current = null;
+    configReceivedRef.current = false;
+    setChartConfig(null);
   };
 
   // Export data
   const exportData = () => {
+    // Create header with labels from chart config
+    const headers = ['Time(s)'];
+    if (chartConfig && chartConfig.charts) {
+      chartConfig.charts.forEach(chart => {
+        chart.datasets.forEach(ds => {
+          headers.push(ds.label);
+        });
+      });
+    } else {
+      // Fallback to generic column names
+      plotData.datasets.forEach((_, index) => {
+        headers.push(`Data_${index}`);
+      });
+    }
+
     const csvContent = [
-      'Time(s),PID_Input,PID_Target,PID_Output',
-      ...plotData.timestamps.map((time, index) =>
-        `${time},${plotData.pidInput[index]},${plotData.pidTarget[index]},${plotData.pidOutput[index]}`
-      )
+      headers.join(','),
+      ...plotData.timestamps.map((time, index) => {
+        const row = [time];
+        plotData.datasets.forEach(dataset => {
+          row.push(dataset[index] !== undefined ? dataset[index] : '');
+        });
+        return row.join(',');
+      })
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -263,122 +329,86 @@ const PIDGraphPlotter = ({ onBack }) => {
     URL.revokeObjectURL(url);
   };
 
-  // Chart configuration for Input/Target
-  const inputTargetChartData = {
-    labels: plotData.timestamps,
-    datasets: [
-      {
-        label: 'PID Input',
-        data: plotData.pidInput,
-        borderColor: 'rgb(239, 68, 68)',
-        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.1
-      },
-      {
-        label: 'PID Target',
-        data: plotData.pidTarget,
-        borderColor: 'rgb(34, 197, 94)',
-        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.1
-      }
-    ]
+  // Generate dynamic chart data based on config
+  const generateChartData = () => {
+    if (!chartConfig || !chartConfig.charts) {
+      return [];
+    }
+
+    const colors = [
+      { border: 'rgb(239, 68, 68)', background: 'rgba(239, 68, 68, 0.1)' },
+      { border: 'rgb(34, 197, 94)', background: 'rgba(34, 197, 94, 0.1)' },
+      { border: 'rgb(59, 130, 246)', background: 'rgba(59, 130, 246, 0.1)' },
+      { border: 'rgb(168, 85, 247)', background: 'rgba(168, 85, 247, 0.1)' },
+      { border: 'rgb(251, 146, 60)', background: 'rgba(251, 146, 60, 0.1)' },
+      { border: 'rgb(236, 72, 153)', background: 'rgba(236, 72, 153, 0.1)' },
+    ];
+
+    return chartConfig.charts.map((chart, chartIndex) => {
+      const datasets = chart.datasets.map((ds, dsIndex) => {
+        const colorIndex = (chartIndex * 2 + dsIndex) % colors.length;
+        return {
+          label: ds.label,
+          data: plotData.datasets[ds.dataIndex] || [],
+          borderColor: colors[colorIndex].border,
+          backgroundColor: colors[colorIndex].background,
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.1
+        };
+      });
+
+      return {
+        labels: plotData.timestamps,
+        datasets
+      };
+    });
   };
 
-  // Chart configuration for Output
-  const outputChartData = {
-    labels: plotData.timestamps,
-    datasets: [
-      {
-        label: 'PID Output',
-        data: plotData.pidOutput,
-        borderColor: 'rgb(59, 130, 246)',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.1
-      }
-    ]
-  };
+  // Generate chart options
+  const generateChartOptions = (chartIndex) => {
+    const chartTitle = chartConfig?.charts?.[chartIndex]?.title ||
+                       `グラフ ${chartIndex + 1}`;
 
-  // Chart options for Input/Target
-  const inputTargetChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: false,
-    interaction: {
-      intersect: false,
-      mode: 'index'
-    },
-    plugins: {
-      legend: {
-        position: 'top'
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
       },
-      title: {
-        display: true,
-        text: 'PID Input & Target'
-      }
-    },
-    scales: {
-      x: {
-        type: 'linear',
-        position: 'bottom',
+      plugins: {
+        legend: {
+          position: 'top'
+        },
         title: {
           display: true,
-          text: '時間 (秒)'
+          text: chartTitle
         }
       },
-      y: {
-        title: {
-          display: true,
-          text: 'PID値 (Input/Target)'
+      scales: {
+        x: {
+          type: 'linear',
+          position: 'bottom',
+          title: {
+            display: true,
+            text: '時間 (秒)'
+          }
         },
-        min: settings.autoScale ? undefined : settings.yAxisMin,
-        max: settings.autoScale ? undefined : settings.yAxisMax
+        y: {
+          title: {
+            display: true,
+            text: '値'
+          },
+          min: settings.autoScale ? undefined : settings.yAxisMin,
+          max: settings.autoScale ? undefined : settings.yAxisMax
+        }
       }
-    }
+    };
   };
 
-  // Chart options for Output
-  const outputChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: false,
-    interaction: {
-      intersect: false,
-      mode: 'index'
-    },
-    plugins: {
-      legend: {
-        position: 'top'
-      },
-      title: {
-        display: true,
-        text: 'PID Output'
-      }
-    },
-    scales: {
-      x: {
-        type: 'linear',
-        position: 'bottom',
-        title: {
-          display: true,
-          text: '時間 (秒)'
-        }
-      },
-      y: {
-        title: {
-          display: true,
-          text: 'モーター出力値 (-1.0 to 1.0)'
-        },
-        min: settings.autoScale ? undefined : settings.yAxisMin,
-        max: settings.autoScale ? undefined : settings.yAxisMax
-      }
-    }
-  };
+  const chartDataArray = generateChartData();
 
   if (!isSupported()) {
     return (
@@ -526,43 +556,28 @@ const PIDGraphPlotter = ({ onBack }) => {
       <div className="statistics-panel">
         <div className="stat-item">
           <span className="stat-label">データ点数:</span>
-          <span className="stat-value">{statistics.count}</span>
+          <span className="stat-value">{plotData.timestamps.length}</span>
         </div>
-        <div className="stat-group">
-          <span className="stat-group-title">PID Input:</span>
-          <div className="stat-values">
-            <span className="stat-value">Min: {statistics.pidInput.min}</span>
-            <span className="stat-value">Max: {statistics.pidInput.max}</span>
-            <span className="stat-value">Avg: {statistics.pidInput.avg}</span>
+        {statistics.map((stat, index) => (
+          <div key={index} className="stat-group">
+            <span className="stat-group-title">{stat.label}:</span>
+            <div className="stat-values">
+              <span className="stat-value">Min: {stat.min}</span>
+              <span className="stat-value">Max: {stat.max}</span>
+              <span className="stat-value">Avg: {stat.avg}</span>
+            </div>
           </div>
-        </div>
-        <div className="stat-group">
-          <span className="stat-group-title">PID Target:</span>
-          <div className="stat-values">
-            <span className="stat-value">Min: {statistics.pidTarget.min}</span>
-            <span className="stat-value">Max: {statistics.pidTarget.max}</span>
-            <span className="stat-value">Avg: {statistics.pidTarget.avg}</span>
-          </div>
-        </div>
-        <div className="stat-group">
-          <span className="stat-group-title">PID Output:</span>
-          <div className="stat-values">
-            <span className="stat-value">Min: {statistics.pidOutput.min}</span>
-            <span className="stat-value">Max: {statistics.pidOutput.max}</span>
-            <span className="stat-value">Avg: {statistics.pidOutput.avg}</span>
-          </div>
-        </div>
+        ))}
       </div>
 
       <div className="charts-container">
-        {plotData.timestamps.length > 0 ? (
+        {plotData.timestamps.length > 0 && chartDataArray.length > 0 ? (
           <>
-            <div className="chart-section">
-              <Line data={inputTargetChartData} options={inputTargetChartOptions} />
-            </div>
-            <div className="chart-section">
-              <Line ref={chartRef} data={outputChartData} options={outputChartOptions} />
-            </div>
+            {chartDataArray.map((chartData, index) => (
+              <div key={index} className="chart-section">
+                <Line data={chartData} options={generateChartOptions(index)} />
+              </div>
+            ))}
           </>
         ) : (
           <div className="empty-chart">
@@ -571,10 +586,10 @@ const PIDGraphPlotter = ({ onBack }) => {
             <div className="data-format-info">
               <h4>データ形式:</h4>
               <ul>
-                <li>CSV形式: input,target,output</li>
+                <li>1行目: conf=0:Label1,0:Label2,1:Label3 (グラフ設定)</li>
+                <li>2行目以降: CSV形式のデータ</li>
                 <li>例: "123,456,0.7890"</li>
                 <li>tool_modeが自動的に有効化されます</li>
-                <li>選択したコマンドが定期的に送信されます</li>
               </ul>
             </div>
           </div>
