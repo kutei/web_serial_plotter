@@ -103,11 +103,18 @@ const PIDGraphPlotter = ({ onBack }) => {
 
   // Parse incoming data for PID values (expects CSV: input,target,output)
   // C++ output format: %d,%d,%.4f (int input, int target, float output)
+  // Returns { dataArray: parsed data, remainingBuffer: unparsed partial line }
   const parseData = (rawData) => {
+    // Split by newline, keeping the last incomplete line in buffer
     const lines = rawData.split('\n');
     const dataArray = [];
 
-    for (const line of lines) {
+    // If there's no newline at the end, the last element is incomplete
+    const hasCompleteLastLine = rawData.endsWith('\n') || rawData.endsWith('\r\n');
+    const linesToProcess = hasCompleteLastLine ? lines : lines.slice(0, -1);
+    const remainingBuffer = hasCompleteLastLine ? '' : lines[lines.length - 1];
+
+    for (const line of linesToProcess) {
       const trimmed = line.trim();
       if (trimmed) {
         console.debug(`Raw data: "${trimmed}"`);
@@ -138,7 +145,7 @@ const PIDGraphPlotter = ({ onBack }) => {
       }
     }
 
-    return dataArray;
+    return { dataArray, remainingBuffer };
   };
 
   // Handle incoming serial data
@@ -148,7 +155,7 @@ const PIDGraphPlotter = ({ onBack }) => {
 
       setDataBuffer(prev => {
         const newBuffer = prev + data;
-        const dataArray = parseData(newBuffer);
+        const { dataArray, remainingBuffer } = parseData(newBuffer);
 
         if (dataArray.length > 0) {
           const now = Date.now();
@@ -209,12 +216,10 @@ const PIDGraphPlotter = ({ onBack }) => {
               datasets: newDatasets
             };
           });
-
-          // Clear processed data from buffer
-          return '';
         }
 
-        return newBuffer;
+        // Return remaining buffer (incomplete line without newline)
+        return remainingBuffer;
       });
     };
 
