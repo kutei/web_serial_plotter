@@ -9,6 +9,7 @@ export class SerialManager {
     this.isConnected = false;
     this.dataCallbacks = [];
     this.statusCallbacks = [];
+    this.lineBuffer = '';  // 改行コードまでのデータを蓄積するバッファ
   }
 
   // Check if WebSerial API is supported
@@ -106,6 +107,7 @@ export class SerialManager {
       }
 
       this.isConnected = false;
+      this.lineBuffer = '';  // Clear line buffer on disconnect
       this.notifyStatusCallbacks({ connected: false });
 
       return true;
@@ -131,7 +133,7 @@ export class SerialManager {
 
         if (value) {
           const text = decoder.decode(value);
-          this.notifyDataCallbacks(text);
+          this.processIncomingData(text);
         }
       }
     } catch (error) {
@@ -139,6 +141,39 @@ export class SerialManager {
         console.error('Error reading from serial port:', error);
         this.notifyStatusCallbacks({ connected: false, error: error.message });
       }
+    }
+  }
+
+  // Process incoming data and emit only complete lines (ending with \n or \r\n)
+  processIncomingData(data) {
+    // Add new data to buffer
+    this.lineBuffer += data;
+
+    // Split by newline characters
+    const lines = this.lineBuffer.split('\n');
+
+    // If the buffer ends with \n, all lines are complete
+    // Otherwise, the last element is an incomplete line
+    if (this.lineBuffer.endsWith('\n') || this.lineBuffer.endsWith('\r\n')) {
+      // All lines are complete, process all and clear buffer
+      lines.forEach(line => {
+        const trimmedLine = line.replace(/\r$/, ''); // Remove trailing \r if present
+        if (trimmedLine) {
+          this.notifyDataCallbacks(trimmedLine + '\n');
+        }
+      });
+      this.lineBuffer = '';
+    } else {
+      // Last line is incomplete, keep it in buffer
+      const completeLines = lines.slice(0, -1);
+      this.lineBuffer = lines[lines.length - 1];
+
+      completeLines.forEach(line => {
+        const trimmedLine = line.replace(/\r$/, ''); // Remove trailing \r if present
+        if (trimmedLine) {
+          this.notifyDataCallbacks(trimmedLine + '\n');
+        }
+      });
     }
   }
 

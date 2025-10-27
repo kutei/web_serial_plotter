@@ -39,7 +39,6 @@ const PIDGraphPlotter = ({ onBack }) => {
   } = useSerialContext();
 
   const [isRecording, setIsRecording] = useState(false);
-  const [dataBuffer, setDataBuffer] = useState('');
   const [plotData, setPlotData] = useState({
     timestamps: [],
     datasets: []  // 動的なデータセット配列
@@ -103,18 +102,12 @@ const PIDGraphPlotter = ({ onBack }) => {
 
   // Parse incoming data for PID values (expects CSV: input,target,output)
   // C++ output format: %d,%d,%.4f (int input, int target, float output)
-  // Returns { dataArray: parsed data, remainingBuffer: unparsed partial line }
+  // Note: serialManager.js ensures we only receive complete lines (ending with \n)
   const parseData = (rawData) => {
-    // Split by newline, keeping the last incomplete line in buffer
     const lines = rawData.split('\n');
     const dataArray = [];
 
-    // If there's no newline at the end, the last element is incomplete
-    const hasCompleteLastLine = rawData.endsWith('\n') || rawData.endsWith('\r\n');
-    const linesToProcess = hasCompleteLastLine ? lines : lines.slice(0, -1);
-    const remainingBuffer = hasCompleteLastLine ? '' : lines[lines.length - 1];
-
-    for (const line of linesToProcess) {
+    for (const line of lines) {
       const trimmed = line.trim();
       if (trimmed) {
         console.debug(`Raw data: "${trimmed}"`);
@@ -145,7 +138,7 @@ const PIDGraphPlotter = ({ onBack }) => {
       }
     }
 
-    return { dataArray, remainingBuffer };
+    return dataArray;
   };
 
   // Handle incoming serial data
@@ -153,74 +146,69 @@ const PIDGraphPlotter = ({ onBack }) => {
     const handleData = (data) => {
       if (!isRecording) return;
 
-      setDataBuffer(prev => {
-        const newBuffer = prev + data;
-        const { dataArray, remainingBuffer } = parseData(newBuffer);
+      // serialManager.js already handles line buffering, so data always contains complete lines
+      const dataArray = parseData(data);
 
-        if (dataArray.length > 0) {
-          const now = Date.now();
-          if (!startTimeRef.current) {
-            startTimeRef.current = now;
-          }
-
-          setPlotData(prevPlotData => {
-            const newTimestamps = [...prevPlotData.timestamps];
-            const newDatasets = prevPlotData.datasets.map(ds => [...ds]);
-
-            dataArray.forEach(values => {
-              const relativeTime = (now - startTimeRef.current) / 1000; // seconds
-              newTimestamps.push(relativeTime);
-
-              // Initialize datasets if needed
-              while (newDatasets.length < values.length) {
-                newDatasets.push([]);
-              }
-
-              // Add values to corresponding datasets
-              values.forEach((value, index) => {
-                if (index < newDatasets.length) {
-                  newDatasets[index].push(value);
-                }
-              });
-            });
-
-            // Limit data points
-            if (newTimestamps.length > settings.maxDataPoints) {
-              const excess = newTimestamps.length - settings.maxDataPoints;
-              newTimestamps.splice(0, excess);
-              newDatasets.forEach(ds => ds.splice(0, excess));
-            }
-
-            // Update statistics
-            if (newTimestamps.length > 0 && newDatasets.length > 0) {
-              const calculateStats = (values) => {
-                if (values.length === 0) return { min: 0, max: 0, avg: 0 };
-                return {
-                  min: Math.min(...values).toFixed(2),
-                  max: Math.max(...values).toFixed(2),
-                  avg: (values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(2)
-                };
-              };
-
-              const newStats = newDatasets.map((ds, index) => ({
-                index,
-                label: chartConfig?.charts?.flatMap(c => c.datasets).find(d => d.dataIndex === index)?.label || `Data ${index}`,
-                ...calculateStats(ds)
-              }));
-
-              setStatistics(newStats);
-            }
-
-            return {
-              timestamps: newTimestamps,
-              datasets: newDatasets
-            };
-          });
+      if (dataArray.length > 0) {
+        const now = Date.now();
+        if (!startTimeRef.current) {
+          startTimeRef.current = now;
         }
 
-        // Return remaining buffer (incomplete line without newline)
-        return remainingBuffer;
-      });
+        setPlotData(prevPlotData => {
+          const newTimestamps = [...prevPlotData.timestamps];
+          const newDatasets = prevPlotData.datasets.map(ds => [...ds]);
+
+          dataArray.forEach(values => {
+            const relativeTime = (now - startTimeRef.current) / 1000; // seconds
+            newTimestamps.push(relativeTime);
+
+            // Initialize datasets if needed
+            while (newDatasets.length < values.length) {
+              newDatasets.push([]);
+            }
+
+            // Add values to corresponding datasets
+            values.forEach((value, index) => {
+              if (index < newDatasets.length) {
+                newDatasets[index].push(value);
+              }
+            });
+          });
+
+          // Limit data points
+          if (newTimestamps.length > settings.maxDataPoints) {
+            const excess = newTimestamps.length - settings.maxDataPoints;
+            newTimestamps.splice(0, excess);
+            newDatasets.forEach(ds => ds.splice(0, excess));
+          }
+
+          // Update statistics
+          if (newTimestamps.length > 0 && newDatasets.length > 0) {
+            const calculateStats = (values) => {
+              if (values.length === 0) return { min: 0, max: 0, avg: 0 };
+              return {
+                min: Math.min(...values).toFixed(2),
+                max: Math.max(...values).toFixed(2),
+                avg: (values.reduce((sum, val) => sum + val, 0) / values.length).toFixed(2)
+              };
+            };
+
+            const newStats = newDatasets.map((ds, index) => ({
+              index,
+              label: chartConfig?.charts?.flatMap(c => c.datasets).find(d => d.dataIndex === index)?.label || `Data ${index}`,
+              ...calculateStats(ds)
+            }));
+
+            setStatistics(newStats);
+          }
+
+          return {
+            timestamps: newTimestamps,
+            datasets: newDatasets
+          };
+        });
+      }
     };
 
     addDataCallback(handleData);
@@ -263,7 +251,6 @@ const PIDGraphPlotter = ({ onBack }) => {
       configReceivedRef.current = false;
       setChartConfig(null);
       setPlotData({ timestamps: [], datasets: [] });
-      setDataBuffer('');
       setStatistics([]);
 
       // Send l command once with interval parameter - C++ will handle continuous transmission
@@ -290,7 +277,6 @@ const PIDGraphPlotter = ({ onBack }) => {
   // Clear data
   const clearData = () => {
     setPlotData({ timestamps: [], datasets: [] });
-    setDataBuffer('');
     setStatistics([]);
     startTimeRef.current = null;
     configReceivedRef.current = false;
