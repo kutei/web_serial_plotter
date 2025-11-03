@@ -474,9 +474,7 @@ const PIDGraphPlotter = ({ onBack }) => {
                 disabled={isRecording}
               >
                 <option value="l">l (PIDデータ)</option>
-                <option value="s">s (システム情報)</option>
-                <option value="e">e (エンコーダ)</option>
-                <option value="c">c (ステータス)</option>
+                <option value="t">t (時刻)</option>
               </select>
             </div>
             <div className="setting-group">
