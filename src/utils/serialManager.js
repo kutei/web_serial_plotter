@@ -40,6 +40,8 @@ export class SerialManager {
   // Notify all data callbacks
   notifyDataCallbacks(data) {
     this.dataCallbacks.forEach(callback => callback(data));
+    // Also emit as custom event for components that prefer event listeners
+    window.dispatchEvent(new CustomEvent('serial-data', { detail: data }));
   }
 
   // Notify all status callbacks

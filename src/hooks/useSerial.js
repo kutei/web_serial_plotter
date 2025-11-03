@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { SerialManager } from '../utils/serialManager';
 
 export const useSerial = () => {
@@ -53,16 +53,33 @@ export const useSerial = () => {
     }
   };
 
-  const sendData = async (data, lineEnding) => {
+  const sendData = useCallback(async (data, lineEnding) => {
+    if (!serialManager.current) {
+      return false;
+    }
     try {
-      setError(null);
       await serialManager.current.sendData(data, lineEnding);
       return true;
     } catch (err) {
+      console.error('Failed to send data:', err);
       setError(err.message);
       return false;
     }
-  };
+  }, []);
+
+  const sendCommand = useCallback(async (command) => {
+    if (!serialManager.current) {
+      return false;
+    }
+    try {
+      await serialManager.current.sendData(command, '\n');
+      return true;
+    } catch (err) {
+      console.error('Failed to send command:', err);
+      setError(err.message);
+      return false;
+    }
+  }, []);
 
   const addDataCallback = (callback) => {
     serialManager.current.addDataCallback(callback);
@@ -83,6 +100,7 @@ export const useSerial = () => {
     connect,
     disconnect,
     sendData,
+    sendCommand,
     addDataCallback,
     removeDataCallback,
     isSupported

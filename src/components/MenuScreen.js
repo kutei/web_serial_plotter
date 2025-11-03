@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Terminal, BarChart3, Wifi, WifiOff, Settings } from 'lucide-react';
+import { Terminal, BarChart3, Activity, Wifi, WifiOff, Settings } from 'lucide-react';
 import { WebSerialSupport } from '../utils/webSerialSupport';
 import { useSerialContext } from '../contexts/SerialContext';
 
@@ -56,6 +56,13 @@ const MenuScreen = ({ onSelectFeature }) => {
       description: '1軸PID制御結果をリアルタイムでグラフ表示',
       icon: BarChart3,
       color: '#60a5fa'
+    },
+    {
+      id: 'monitor',
+      title: 'システムモニター',
+      description: 'エンコーダとSBUS2データをリアルタイムで監視',
+      icon: Activity,
+      color: '#f59e0b'
     }
   ];
 

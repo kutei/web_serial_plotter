@@ -3,6 +3,7 @@ import './App.css';
 import MenuScreen from './components/MenuScreen';
 import SerialTerminal from './components/SerialTerminal';
 import PIDGraphPlotter from './components/PIDGraphPlotter';
+import SystemMonitor from './components/SystemMonitor';
 import { SerialProvider } from './contexts/SerialContext';
 
 function App() {
@@ -14,6 +15,8 @@ function App() {
         return <SerialTerminal onBack={() => setCurrentView('menu')} />;
       case 'plotter':
         return <PIDGraphPlotter onBack={() => setCurrentView('menu')} />;
+      case 'monitor':
+        return <SystemMonitor onBack={() => setCurrentView('menu')} />;
       default:
         return <MenuScreen onSelectFeature={setCurrentView} />;
     }
